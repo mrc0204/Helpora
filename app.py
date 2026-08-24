@@ -51,14 +51,9 @@ def helpora_response(ticket: str) -> str:
         )
 
     except Exception as error:
+    print(f"Helpora error: {error}")
 
-        # Log the actual error for debugging
-        print(f"Helpora error: {error}")
-
-        return (
-            "Sorry, something went wrong while processing "
-            "your request. Please try again."
-        )
+    return f"Error: {type(error).__name__}: {error}"
 
     # -------------------------
     # Output Guardrails
