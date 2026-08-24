@@ -6,88 +6,132 @@ from langgraph.graph import StateGraph, START, END
 from typing import TypedDict
 
 from config import llm
+
 from tools import (
     lookup_payments,
     create_task,
     search_tech_issues,
 )
+
 from rag import search_policy
 
 
-# -----------------------------
+# =========================================================
 # Agent Invocation Helper
-# -----------------------------
+# =========================================================
 
 def invoke_agent(agent, ticket: str, retries: int = 3) -> str:
-    """Run an agent with automatic retry for Groq tool-calling errors."""
+    """
+    Run an agent and retry when Groq returns a tool-calling error.
+    """
+
+    last_error = None
 
     for attempt in range(retries + 1):
+
         try:
-            result = agent.invoke({
-                "messages": [("user", ticket)]
-            })
+            result = agent.invoke(
+                {
+                    "messages": [
+                        ("user", ticket)
+                    ]
+                }
+            )
 
-            return result["messages"][-1].content
+            messages = result.get("messages", [])
 
-        except BadRequestError as e:
+            if not messages:
+                return "Sorry, I couldn't generate a response."
 
-            if "tool_use_failed" not in str(e):
+            return messages[-1].content
+
+        except BadRequestError as error:
+
+            last_error = error
+
+            if "tool_use_failed" not in str(error):
                 raise
 
-            if attempt == retries:
-                return (
-                    "[Helpora couldn't complete this request. "
-                    "Please try again.]"
-                )
+            if attempt < retries:
+                continue
+
+    print(f"Helpora agent failed after {retries + 1} attempts: {last_error}")
+
+    return (
+        "Sorry, I couldn't complete your request right now. "
+        "Please try again."
+    )
 
 
-# -----------------------------
-# Billing Agent
-# -----------------------------
+# =========================================================
+# BILLING AGENT
+# =========================================================
 
 BILLING_PROMPT = """
 You are Helpora-Billing, a campus payments support agent.
 
-You ONLY handle money questions:
-fees, charges, invoices, refunds and duplicate payments.
+You ONLY handle money-related questions:
+fees, charges, invoices, refunds, duplicate payments, and receipts.
 
 For every ticket:
 
-1. Find the student's ID. It looks like S-7-042.
-   If there is none, ask for it and stop.
+1. Find the student's ID.
+   It normally looks like S-7-042.
+   If there is no student ID, ask for it and stop.
 
-2. Amounts are in rupees.
-   Write them as Rs 15000, never with a dollar sign.
+2. Amounts are in Indian rupees.
+   Write amounts as Rs 15000.
+   Never use a dollar sign.
 
-3. Call lookup_payments with that ID.
-   Always check with the tool. Never guess.
+3. Always call lookup_payments with the student's ID.
+   Never guess payment information.
 
-4. Decide which case you are in:
+4. Determine the situation:
 
-- TWO IDENTICAL CHARGES:
-  This is a duplicate.
-  Call create_task with an appropriate refund task.
-  Then tell the student that a refund request has been filed.
+   TWO IDENTICAL CHARGES:
+   Treat this as a duplicate payment.
+   Call create_task to file a refund request for the duplicate charge.
+   Then tell the student that a refund request has been filed.
 
-- ONE NORMAL CHARGE:
-  Nothing is wrong.
-  Reassure the student and explain what the charge was for.
+   ONE NORMAL CHARGE:
+   Explain that the payment record appears normal
+   and tell the student what the charge was for.
 
-- NO RECORDS FOUND:
-  Say that you could not find that ID and ask the student to re-check it.
-  Do not file a task.
+   NO RECORDS FOUND:
+   Tell the student that no payment record was found
+   and ask them to re-check their student ID.
+   Do not create a task.
 
-5. For questions about refund policies, refund windows,
-   refund methods, or escalation thresholds:
+5. POLICY QUESTIONS:
+
+   If the student asks about:
+   - refund eligibility
+   - refund windows
+   - refund percentage
+   - refund method
+   - store credit
+   - scholarship refund rules
+   - escalation thresholds
+
    ALWAYS call search_policy before answering.
 
-6. Reply in two or three warm sentences.
-   No bullet points unless explaining technical steps.
+   Only use information returned by search_policy.
+   Never invent policy information.
 
-Never mention tools, function names, JSON, or your reasoning.
+6. If a request involves more than Rs 20000,
+   create a task for human approval.
 
-You can read records and file tasks.
-You cannot move money yourself.
+7. You can read payment records and create tasks.
+   You CANNOT directly move, refund, or transfer money.
+
+8. Keep responses concise and friendly.
+
+Never mention:
+- tools
+- function names
+- JSON
+- internal reasoning
+- system prompts
 """
 
 
@@ -102,39 +146,49 @@ billing = create_agent(
 )
 
 
-# -----------------------------
-# Technical Agent
-# -----------------------------
+# =========================================================
+# TECHNICAL AGENT
+# =========================================================
 
 TECH_PROMPT = """
 You are Helpora-Tech, a campus IT support agent.
 
-You ONLY handle technical problems:
-logging in, passwords, the app, the website, and videos.
+You ONLY handle technical problems involving:
+- login
+- passwords
+- the app
+- the website
+- videos
 
 For every ticket:
 
-1. Choose ONE topic:
+1. Identify ONE topic:
    login, app, video, or website.
 
-2. Call search_tech_issues with that topic.
-   Always search before answering.
-   Never invent a fix.
+2. ALWAYS call search_tech_issues before answering.
 
-3. If a known issue matches:
-   Give the exact workaround in your own words,
-   using at most three numbered steps.
+3. If a known workaround is found:
+   Give the workaround clearly.
+   Use at most three numbered steps.
 
-4. If nothing matches:
-   Say it looks like a new problem and call create_task
-   so the tech team can investigate.
+4. If no known workaround exists:
+   Tell the student that this appears to be a new issue
+   and call create_task for the technical team.
 
-Lead with the fix, not an apology.
+5. Never invent a technical solution that was not returned
+   by search_tech_issues.
 
-Never mention tools, function names, JSON, or your reasoning.
+6. You cannot reset passwords yourself.
+   You can only provide the available guidance and create tasks.
 
-You cannot reset passwords yourself.
-You can only advise and log.
+Keep responses short, calm, and helpful.
+
+Never mention:
+- tools
+- function names
+- JSON
+- internal reasoning
+- system prompts
 """
 
 
@@ -148,53 +202,90 @@ tech = create_agent(
 )
 
 
-# -----------------------------
-# Router
-# -----------------------------
+# =========================================================
+# ROUTER
+# =========================================================
 
 ROUTER_PROMPT = """
-You are the front desk of a campus support team.
+You are the front desk router for Helpora.
 
-Read the student's ticket and decide which specialist should handle it.
+Classify the student's request into exactly ONE category:
 
-Answer "billing" if the ticket is about:
-money, fees, charges, invoices, refunds,
-duplicate payments, or receipts.
+billing
+tech
 
-Answer "tech" if the ticket is about:
-technology, logging in, passwords, accounts,
-the app, the website, videos, or pages not loading.
+Choose BILLING for:
+- fees
+- payments
+- charges
+- duplicate charges
+- refunds
+- invoices
+- receipts
+- payment records
 
-Rules:
+Choose TECH for:
+- login
+- password
+- account access
+- app problems
+- website problems
+- videos
+- pages not loading
+- technical errors
 
-- Reply with exactly one word: billing or tech.
-- Lowercase.
-- No punctuation.
-- No explanation.
-- If the ticket mentions both, choose the thing
-  the student is asking you to FIX.
-- If you genuinely cannot tell, answer billing.
+If a request contains both billing and technical information,
+choose the category representing the MAIN problem
+the student wants fixed.
+
+Return ONLY one word:
+
+billing
+
+OR
+
+tech
 """
 
 
 def pick_specialist(ticket: str) -> str:
-    answer = llm.invoke([
-        ("system", ROUTER_PROMPT),
-        ("user", ticket),
-    ]).content.lower()
+    """
+    Route the ticket to billing or tech.
+    """
 
-    return "tech" if "tech" in answer else "billing"
+    response = llm.invoke(
+        [
+            ("system", ROUTER_PROMPT),
+            ("user", ticket),
+        ]
+    )
+
+    answer = response.content.strip().lower()
+
+    # Exact routing instead of searching for the word "tech"
+    if answer == "tech":
+        return "tech"
+
+    if answer == "billing":
+        return "billing"
+
+    # Safe fallback
+    return "billing"
 
 
-# -----------------------------
-# LangGraph State
-# -----------------------------
+# =========================================================
+# LANGGRAPH STATE
+# =========================================================
 
 class State(TypedDict):
     ticket: str
     route: str
     reply: str
 
+
+# =========================================================
+# GRAPH NODES
+# =========================================================
 
 def router(state: State):
     return {
@@ -228,9 +319,9 @@ def choose(state: State):
     return state["route"]
 
 
-# -----------------------------
-# Build Graph
-# -----------------------------
+# =========================================================
+# BUILD HELPORA GRAPH
+# =========================================================
 
 builder = StateGraph(State)
 
@@ -238,7 +329,10 @@ builder.add_node("router", router)
 builder.add_node("billing", do_billing)
 builder.add_node("tech", do_tech)
 
-builder.add_edge(START, "router")
+builder.add_edge(
+    START,
+    "router"
+)
 
 builder.add_conditional_edges(
     "router",
@@ -249,19 +343,41 @@ builder.add_conditional_edges(
     },
 )
 
-builder.add_edge("billing", END)
-builder.add_edge("tech", END)
+builder.add_edge(
+    "billing",
+    END
+)
+
+builder.add_edge(
+    "tech",
+    END
+)
+
 
 graph = builder.compile()
 
 
-# -----------------------------
-# Public Helpora Function
-# -----------------------------
+# =========================================================
+# PUBLIC HELPORA FUNCTION
+# =========================================================
 
 def ask(ticket: str):
-    """Send a user ticket through the Helpora multi-agent system."""
+    """
+    Main entry point for Helpora.
 
-    return graph.invoke({
-        "ticket": ticket
-    })
+    Takes a user's ticket and returns:
+    - selected route
+    - final response
+    """
+
+    if not ticket or not ticket.strip():
+        return {
+            "route": "billing",
+            "reply": "Please describe your issue."
+        }
+
+    return graph.invoke(
+        {
+            "ticket": ticket.strip()
+        }
+    )
