@@ -1,30 +1,50 @@
+# config.py
+
 import os
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 
-# Load environment variables from .env
+
+# =========================================================
+# ENVIRONMENT VARIABLES
+# =========================================================
+
+# Loads .env when running locally.
+# On Hugging Face, Secrets are already exposed as
+# environment variables, so this still works.
 load_dotenv()
 
-# API Keys
+
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY")
 
-# Validate required key
+
+# =========================================================
+# API KEY VALIDATION
+# =========================================================
+
 if not GROQ_API_KEY:
     raise ValueError(
-        "GROQ_API_KEY is not set. "
-        "Add it to your .env file or deployment secrets."
+        "GROQ_API_KEY is missing. "
+        "Add it to your .env file locally or "
+        to Hugging Face Space Secrets."
     )
 
-# Make the key available to LangChain/Groq
+
+# Make the Groq key available to LangChain/Groq
 os.environ["GROQ_API_KEY"] = GROQ_API_KEY
+
 
 # LangSmith is optional
 if LANGSMITH_API_KEY:
     os.environ["LANGSMITH_API_KEY"] = LANGSMITH_API_KEY
 
-# Helpora LLM
+
+# =========================================================
+# LLM
+# =========================================================
+
 llm = ChatGroq(
     model="llama-3.3-70b-versatile",
-    temperature=0
+    temperature=0,
 )
