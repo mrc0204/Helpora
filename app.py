@@ -1,5 +1,6 @@
 # app.py
 
+import os
 import gradio as gr
 
 from database import initialize_database
@@ -19,30 +20,19 @@ initialize_database()
 # =========================================================
 
 def helpora_response(ticket: str) -> str:
-    """
-    Main function connecting the Gradio UI
-    to the Helpora multi-agent system.
-    """
+    """Process a user's request through Helpora."""
 
-    # Empty input
     if not ticket or not ticket.strip():
         return "Please describe your issue."
 
     ticket = ticket.strip()
 
-    # -------------------------
-    # Input Guardrail
-    # -------------------------
-
+    # Input guardrail
     if not validate_input(ticket):
         return "I'm sorry, I can't process that request."
 
     try:
-
-        # -------------------------
         # Run Helpora
-        # -------------------------
-
         result = ask(ticket)
 
         reply = result.get(
@@ -51,14 +41,14 @@ def helpora_response(ticket: str) -> str:
         )
 
     except Exception as error:
-    print(f"Helpora error: {error}")
+        # TEMPORARY DEBUGGING
+        print(f"Helpora error: {type(error).__name__}: {error}")
 
-    return f"Error: {type(error).__name__}: {error}"
+        return (
+            f"Error: {type(error).__name__}: {error}"
+        )
 
-    # -------------------------
-    # Output Guardrails
-    # -------------------------
-
+    # Output guardrails
     if not validate_output(reply):
         return "I'm sorry, I can't process that request."
 
@@ -69,9 +59,7 @@ def helpora_response(ticket: str) -> str:
 # GRADIO UI
 # =========================================================
 
-with gr.Blocks(
-    title="Helpora"
-) as demo:
+with gr.Blocks(title="Helpora") as demo:
 
     gr.Markdown(
         """
@@ -99,13 +87,9 @@ with gr.Blocks(
         lines=5,
     )
 
-    submit_button = gr.Button(
-        "Ask Helpora"
-    )
+    submit_button = gr.Button("Ask Helpora")
 
-    clear_button = gr.Button(
-        "Clear"
-    )
+    clear_button = gr.Button("Clear")
 
     response_output = gr.Textbox(
         label="Helpora Response",
@@ -154,12 +138,11 @@ with gr.Blocks(
 
 
 # =========================================================
-# START APP
+# START SERVER
 # =========================================================
-if __name__ == "__main__":
-    import os
 
+if __name__ == "__main__":
     demo.launch(
         server_name="0.0.0.0",
-        server_port=int(os.environ.get("PORT", 7860))
+        server_port=int(os.environ.get("PORT", 10000)),
     )
