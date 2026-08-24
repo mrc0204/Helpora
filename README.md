@@ -1,50 +1,62 @@
-# Helpora
+# Helpora 🤖
 
-Helpora is a multi-agent AI support system designed to handle campus billing and technical support queries.
+Helpora is a multi-agent AI campus support system that intelligently routes student requests to specialized billing or technical support agents.
 
-## Features
+## ✨ Features
 
-- Multi-agent architecture
-- Intelligent ticket routing
-- Billing support agent
-- Technical support agent
-- Payment lookup using SQLite
-- Technical issue lookup
-- Refund-policy RAG using ChromaDB
-- Input guardrails
-- Output guardrails
-- Policy guardrails
-- Groq LLM
-- LangGraph orchestration
-- Simple Gradio interface
-- LangSmith observability support
+- 🤖 Multi-agent AI architecture
+- 🔀 Intelligent billing/technical routing
+- 💳 Billing and payment support
+- 🔧 Technical issue support
+- 🧾 SQLite payment lookup
+- 📚 RAG-based refund policy search
+- 🧠 ChromaDB vector database
+- 🛡️ Input and output guardrails
+- 👤 Human escalation task system
+- ⚡ Groq LLM
+- 🔗 LangGraph orchestration
+- 🎨 Gradio web interface
+- 📊 Optional LangSmith observability
 
-## Architecture
+---
+
+## 🏗️ Architecture
 
 ```text
-                    User
-                      |
-                      v
-                 Gradio UI
-                      |
-                      v
-              Input Guardrail
-                      |
-                      v
-                 Helpora Router
-                  /          \
-                 /            \
-                v              v
-          Billing Agent     Tech Agent
-             |                  |
-       +-----+------+      +----+----+
-       |            |      |         |
-    Payments      RAG    Tech DB   Task Board
-       |            |
-       +-----+------+
-             |
-             v
-       Output Guardrails
-             |
-             v
-          Response
+                         USER
+                           │
+                           ▼
+                    ┌─────────────┐
+                    │  Gradio UI  │
+                    └──────┬──────┘
+                           │
+                           ▼
+                  ┌──────────────────┐
+                  │ Input Guardrail  │
+                  └────────┬─────────┘
+                           │
+                           ▼
+                  ┌──────────────────┐
+                  │  Helpora Router  │
+                  └───────┬───┬──────┘
+                          │   │
+                 Billing  │   │  Tech
+                          │   │
+              ┌───────────▼┐ ┌▼────────────┐
+              │   Billing   │ │    Tech     │
+              │    Agent    │ │    Agent    │
+              └─────┬───────┘ └──────┬─────┘
+                    │                │
+          ┌─────────┼────────┐       │
+          ▼         ▼        ▼       ▼
+       Payments    RAG     Tasks   Tech Issues
+          │         │        │       │
+          └─────────┴────────┴───────┘
+                           │
+                           ▼
+                 ┌───────────────────┐
+                 │ Output Guardrails │
+                 └─────────┬─────────┘
+                           │
+                           ▼
+                       RESPONSE
