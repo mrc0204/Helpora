@@ -1,12 +1,22 @@
+# database.py
+
 import sqlite3
 
 DB_PATH = "payments.db"
 
 
-def initialize_database():
-    """Create and populate the payments table if it doesn't exist."""
+def get_connection():
+    """Create a connection to the Helpora SQLite database."""
+    return sqlite3.connect(DB_PATH)
 
-    db = sqlite3.connect(DB_PATH)
+
+def initialize_database():
+    """
+    Initialize the payments table and add demo records
+    only when the database is empty.
+    """
+
+    db = get_connection()
 
     db.execute("""
         CREATE TABLE IF NOT EXISTS payments (
@@ -17,12 +27,19 @@ def initialize_database():
         )
     """)
 
-    # Add demo data only if the table is empty
-    count = db.execute("SELECT COUNT(*) FROM payments").fetchone()[0]
+    count = db.execute(
+        "SELECT COUNT(*) FROM payments"
+    ).fetchone()[0]
 
+    # Add demo records only on first initialization
     if count == 0:
+
         db.executemany(
-            "INSERT INTO payments VALUES (?, ?, ?, ?)",
+            """
+            INSERT INTO payments
+            (student_id, student_name, amount, note)
+            VALUES (?, ?, ?, ?)
+            """,
             [
                 ("S-7-042", "Aditya", 15000, "Course fee"),
                 ("S-7-042", "Aditya", 15000, "Course fee"),
@@ -35,8 +52,3 @@ def initialize_database():
 
     db.commit()
     db.close()
-
-
-def get_connection():
-    """Return a connection to the Helpora database."""
-    return sqlite3.connect(DB_PATH)
